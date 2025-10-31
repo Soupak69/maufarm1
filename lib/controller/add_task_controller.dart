@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
+import '../services/notification_service.dart';
 
 class AddTaskController extends ChangeNotifier {
   final TextEditingController dateController = TextEditingController();
@@ -18,6 +19,8 @@ class AddTaskController extends ChangeNotifier {
   final VoidCallback? onTaskAdded;
   final Map<String, dynamic>? taskToEdit;
   
+  final NotificationService _notificationService = NotificationService();
+  
   bool get isEditMode => taskToEdit != null;
 
   AddTaskController({
@@ -25,6 +28,7 @@ class AddTaskController extends ChangeNotifier {
     this.onTaskAdded,
     this.taskToEdit,
   }) {
+    _notificationService.initialize();
     _initializeFields();
   }
 
@@ -86,9 +90,7 @@ class AddTaskController extends ChangeNotifier {
   }
 
   Future<void> addTask() async {
-    if (!validateFields()) {
-      return;
-    }
+    if (!validateFields()) return;
 
     final date = dateController.text.trim();
     final time = timeController.text.trim();
@@ -99,7 +101,6 @@ class AddTaskController extends ChangeNotifier {
 
     try {
       final user = Supabase.instance.client.auth.currentUser;
-      
       if (user == null) {
         generalError = 'Please sign in to add tasks';
         notifyListeners();
@@ -107,36 +108,46 @@ class AddTaskController extends ChangeNotifier {
         return;
       }
 
-      final response = await Supabase.instance.client.from('tasks').insert({
-        'date': date,
-        'time': time,
-        'title': title,
-        'priority': selectedPriority,
-        'uuid': user.id,
-        'is_deleted': 'not_deleted',
-        'status': 'pending',
-      }).select();
+      print('📝 Adding task: $title');
+      print('📅 Date: $date, Time: $time');
 
-      print('Insert response: $response');
+      final response = await Supabase.instance.client
+          .from('tasks')
+          .insert({
+            'date': date,
+            'time': time,
+            'title': title,
+            'priority': selectedPriority,
+            'uuid': user.id,
+            'is_deleted': 'not_deleted',
+            'status': 'pending',
+          })
+          .select()
+          .single();
+
+      print('✅ Task inserted successfully: ${response['id']}');
+
+      final taskId = response['id'] as int;
+
+      await _scheduleNotifications(date, time, title, taskId);
 
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Task added successfully')),
+          const SnackBar(
+            content: Text('Task added successfully'),
+            backgroundColor: Colors.green,
+          ),
         );
         onTaskAdded?.call();
         Navigator.pop(context);
       }
-    } catch (e) {
-      print('Error adding task: $e');
+    } catch (e, stackTrace) {
+      print('❌ Error adding task: $e');
+      print('Stack trace: $stackTrace');
       
-      if (e is PostgrestException) {
-        print('Postgrest error code: ${e.code}');
-        print('Postgrest error message: ${e.message}');
-        generalError = e.message ?? 'Failed to add task';
-      } else {
-        generalError = 'Failed to add task. Please try again.';
-      }
-      
+      generalError = e is PostgrestException 
+          ? (e.message ?? 'Failed to add task') 
+          : 'Failed to add task. Please try again.';
       notifyListeners();
     } finally {
       _setLoading(false);
@@ -144,27 +155,26 @@ class AddTaskController extends ChangeNotifier {
   }
 
   Future<void> updateTask() async {
-    if (!validateFields()) {
-      return;
-    }
+    if (!validateFields()) return;
 
     final date = dateController.text.trim();
     final time = timeController.text.trim();
     final title = titleController.text.trim();
-    final taskId = taskToEdit!['id'];
+    final taskId = taskToEdit!['id'] as int;
 
     _setLoading(true);
     clearErrors();
 
     try {
       final user = Supabase.instance.client.auth.currentUser;
-      
       if (user == null) {
         generalError = 'Please sign in to update tasks';
         notifyListeners();
         _setLoading(false);
         return;
       }
+
+      print('✏️ Updating task: $taskId');
 
       final response = await Supabase.instance.client
           .from('tasks')
@@ -175,31 +185,80 @@ class AddTaskController extends ChangeNotifier {
             'priority': selectedPriority,
           })
           .eq('id', taskId)
-          .select();
+          .select()
+          .single();
 
-      print('Update response: $response');
+      print('✅ Task updated successfully');
+
+     
+      await _notificationService.cancelTaskNotifications(taskId);
+      await _scheduleNotifications(date, time, title, taskId);
 
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Task updated successfully')),
+          const SnackBar(
+            content: Text('Task updated successfully'),
+            backgroundColor: Colors.green,
+          ),
         );
         onTaskAdded?.call();
         Navigator.pop(context);
       }
-    } catch (e) {
-      print('Error updating task: $e');
+    } catch (e, stackTrace) {
+      print('❌ Error updating task: $e');
+      print('Stack trace: $stackTrace');
       
-      if (e is PostgrestException) {
-        print('Postgrest error code: ${e.code}');
-        print('Postgrest error message: ${e.message}');
-        generalError = e.message ?? 'Failed to update task';
-      } else {
-        generalError = 'Failed to update task. Please try again.';
-      }
-      
+      generalError = e is PostgrestException 
+          ? (e.message ?? 'Failed to update task') 
+          : 'Failed to update task. Please try again.';
       notifyListeners();
     } finally {
       _setLoading(false);
+    }
+  }
+
+  Future<void> _scheduleNotifications(
+    String date,
+    String time,
+    String title,
+    int taskId,
+  ) async {
+    try {
+      
+      final timeFormatted = _notificationService.parseTimeToHHMM(time);
+      final taskDateTimeStr = '$date $timeFormatted';
+      
+      print('🕐 Parsing datetime: $taskDateTimeStr');
+      
+      final taskDateTime = DateTime.tryParse(taskDateTimeStr);
+      
+      if (taskDateTime == null) {
+        print('⚠️ Failed to parse datetime: $taskDateTimeStr');
+        return;
+      }
+
+      if (taskDateTime.isBefore(DateTime.now())) {
+        print('⏭️ Task time is in the past, skipping notifications');
+        return;
+      }
+
+      print('🔔 Scheduling notifications for: $taskDateTime');
+      
+      await _notificationService.scheduleTaskNotifications(
+        taskTitle: title,
+        scheduledDateTime: taskDateTime,
+        taskId: taskId,
+      );
+
+      await _notificationService.scheduleMissedTaskNotification(
+        taskId: taskId,
+        taskTitle: title,
+        scheduledDateTime: taskDateTime,
+      );
+      
+    } catch (e, stackTrace) {
+      print('❌ Error scheduling notifications: $e');
+      print('Stack trace: $stackTrace');
     }
   }
 

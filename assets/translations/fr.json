@@ -50,7 +50,8 @@
   "task_deleted_success": "La tâche a été supprimée avec succès.",
   "delete_task_confirm": "Êtes-vous sûr de vouloir supprimer cette tâche ?",
   "cancel_button": "Annuler",
-  "delete_button": "Supprimer"
+  "delete_button": "Supprimer",
+  "sign_out": "Se déconnecter"
 
 }
 

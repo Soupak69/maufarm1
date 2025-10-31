@@ -1,11 +1,12 @@
 import 'package:flutter/material.dart';
 import 'package:easy_localization/easy_localization.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-import '../../screens/auth/sign_in.dart';
+import 'package:flutter_local_notifications/flutter_local_notifications.dart';
+import '../main.dart';
 
 class CustomAppBar extends StatefulWidget implements PreferredSizeWidget {
   final VoidCallback? onRefresh;
-  
+
   const CustomAppBar({super.key, this.onRefresh});
 
   @override
@@ -15,7 +16,7 @@ class CustomAppBar extends StatefulWidget implements PreferredSizeWidget {
   Size get preferredSize => const Size.fromHeight(kToolbarHeight);
 }
 
-class _CustomAppBarState extends State<CustomAppBar> with RouteAware {
+class _CustomAppBarState extends State<CustomAppBar> {
   final supabase = Supabase.instance.client;
   String username = '';
 
@@ -23,16 +24,6 @@ class _CustomAppBarState extends State<CustomAppBar> with RouteAware {
   void initState() {
     super.initState();
     _fetchUsername();
-  }
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    // Refresh username when navigating back to this screen
-    final route = ModalRoute.of(context);
-    if (route is PageRoute) {
-      _fetchUsername();
-    }
   }
 
   Future<void> _fetchUsername() async {
@@ -52,10 +43,29 @@ class _CustomAppBarState extends State<CustomAppBar> with RouteAware {
     }
   }
 
+  Future<void> _showTestNotification() async {
+    const AndroidNotificationDetails androidDetails =
+        AndroidNotificationDetails(
+      'test_channel_id',
+      'Test Notifications',
+      channelDescription: 'Demo channel for local notifications',
+      importance: Importance.max,
+      priority: Priority.high,
+    );
+
+    const NotificationDetails details =
+        NotificationDetails(android: androidDetails);
+
+    await flutterLocalNotificationsPlugin.show(
+      0,
+      'Notification Test',
+      'It works! 🎉',
+      details,
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    final _ = context.locale;
-
     return AppBar(
       title: Text(
         username.isNotEmpty ? '${'hi'.tr()}, $username' : '',
@@ -67,15 +77,8 @@ class _CustomAppBarState extends State<CustomAppBar> with RouteAware {
       backgroundColor: const Color.fromARGB(255, 169, 238, 172),
       actions: [
         IconButton(
-          icon: const Icon(Icons.logout),
-          onPressed: () async {
-            await supabase.auth.signOut();
-            if (context.mounted) {
-              Navigator.of(context).pushReplacement(
-                MaterialPageRoute(builder: (_) => const SignInScreen()),
-              );
-            }
-          },
+          icon: const Icon(Icons.notifications_none, color: Colors.black),
+          onPressed: _showTestNotification, // ✅ Trigger notification
         ),
       ],
     );

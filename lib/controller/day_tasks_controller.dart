@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
-
+import '../services/notification_service.dart'; 
 class TaskController extends ChangeNotifier {
   TaskController();
 
+  final NotificationService _notificationService = NotificationService(); 
   List<Map<String, dynamic>> tasks = [];
   bool isLoading = false;
   String? errorMessage;
@@ -37,7 +38,6 @@ class TaskController extends ChangeNotifier {
 
       tasks = List<Map<String, dynamic>>.from(response as List);
       debugPrint('Loaded ${tasks.length} tasks: $tasks');
-
     } catch (e, stackTrace) {
       debugPrint('Error loading tasks: $e');
       debugPrint('Stack trace: $stackTrace');
@@ -58,11 +58,15 @@ class TaskController extends ChangeNotifier {
           .update({'status': isDone ? 'done' : 'pending'})
           .eq('id', taskId);
 
-      
       final taskIndex = tasks.indexWhere((task) => task['id'] == taskId);
       if (taskIndex != -1) {
         tasks[taskIndex]['status'] = isDone ? 'done' : 'pending';
         notifyListeners();
+      }
+
+      if (isDone) {
+        await _notificationService.cancelTaskNotifications(taskId);
+        debugPrint('🛑 Cancelled notifications for completed task $taskId');
       }
 
       debugPrint('Task status updated successfully');
@@ -83,9 +87,11 @@ class TaskController extends ChangeNotifier {
           .update({'is_deleted': 'deleted'})
           .eq('id', taskId);
 
-      
       tasks.removeWhere((task) => task['id'] == taskId);
       notifyListeners();
+
+      await _notificationService.cancelTaskNotifications(taskId);
+      debugPrint('🗑️ Cancelled notifications for deleted task $taskId');
 
       debugPrint('Task deleted successfully');
     } catch (e, stackTrace) {
