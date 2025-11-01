@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../services/notification_service.dart'; 
+
 class TaskController extends ChangeNotifier {
   TaskController();
 
@@ -64,9 +65,10 @@ class TaskController extends ChangeNotifier {
         notifyListeners();
       }
 
+      // Cancel notifications when task is marked as done
       if (isDone) {
-        await _notificationService.cancelTaskNotifications(taskId);
-        debugPrint('🛑 Cancelled notifications for completed task $taskId');
+        await _notificationService.removeTaskNotifications(taskId);
+        debugPrint('🛑 Removed notifications for completed task $taskId');
       }
 
       debugPrint('Task status updated successfully');
@@ -90,8 +92,9 @@ class TaskController extends ChangeNotifier {
       tasks.removeWhere((task) => task['id'] == taskId);
       notifyListeners();
 
-      await _notificationService.cancelTaskNotifications(taskId);
-      debugPrint('🗑️ Cancelled notifications for deleted task $taskId');
+      // Remove all notifications for deleted task
+      await _notificationService.removeTaskNotifications(taskId);
+      debugPrint('🗑️ Removed notifications for deleted task $taskId');
 
       debugPrint('Task deleted successfully');
     } catch (e, stackTrace) {

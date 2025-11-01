@@ -6,10 +6,10 @@ class AddTaskController extends ChangeNotifier {
   final TextEditingController dateController = TextEditingController();
   final TextEditingController timeController = TextEditingController();
   final TextEditingController titleController = TextEditingController();
-  
+
   String selectedPriority = 'Normal';
   bool isLoading = false;
-  
+
   String? dateError;
   String? timeError;
   String? titleError;
@@ -18,9 +18,9 @@ class AddTaskController extends ChangeNotifier {
   final BuildContext context;
   final VoidCallback? onTaskAdded;
   final Map<String, dynamic>? taskToEdit;
-  
+
   final NotificationService _notificationService = NotificationService();
-  
+
   bool get isEditMode => taskToEdit != null;
 
   AddTaskController({
@@ -108,9 +108,6 @@ class AddTaskController extends ChangeNotifier {
         return;
       }
 
-      print('📝 Adding task: $title');
-      print('📅 Date: $date, Time: $time');
-
       final response = await Supabase.instance.client
           .from('tasks')
           .insert({
@@ -124,8 +121,6 @@ class AddTaskController extends ChangeNotifier {
           })
           .select()
           .single();
-
-      print('✅ Task inserted successfully: ${response['id']}');
 
       final taskId = response['id'] as int;
 
@@ -142,13 +137,12 @@ class AddTaskController extends ChangeNotifier {
         Navigator.pop(context);
       }
     } catch (e, stackTrace) {
-      print('❌ Error adding task: $e');
-      print('Stack trace: $stackTrace');
-      
-      generalError = e is PostgrestException 
-          ? (e.message ?? 'Failed to add task') 
+      generalError = e is PostgrestException
+          ? (e.message ?? 'Failed to add task')
           : 'Failed to add task. Please try again.';
       notifyListeners();
+      print('❌ Error adding task: $e');
+      print(stackTrace);
     } finally {
       _setLoading(false);
     }
@@ -174,8 +168,6 @@ class AddTaskController extends ChangeNotifier {
         return;
       }
 
-      print('✏️ Updating task: $taskId');
-
       final response = await Supabase.instance.client
           .from('tasks')
           .update({
@@ -188,10 +180,8 @@ class AddTaskController extends ChangeNotifier {
           .select()
           .single();
 
-      print('✅ Task updated successfully');
-
-     
-      await _notificationService.cancelTaskNotifications(taskId);
+      // Remove old notifications and schedule new ones
+      await _notificationService.removeTaskNotifications(taskId);
       await _scheduleNotifications(date, time, title, taskId);
 
       if (context.mounted) {
@@ -205,13 +195,12 @@ class AddTaskController extends ChangeNotifier {
         Navigator.pop(context);
       }
     } catch (e, stackTrace) {
-      print('❌ Error updating task: $e');
-      print('Stack trace: $stackTrace');
-      
-      generalError = e is PostgrestException 
-          ? (e.message ?? 'Failed to update task') 
+      generalError = e is PostgrestException
+          ? (e.message ?? 'Failed to update task')
           : 'Failed to update task. Please try again.';
       notifyListeners();
+      print('❌ Error updating task: $e');
+      print(stackTrace);
     } finally {
       _setLoading(false);
     }
@@ -224,41 +213,47 @@ class AddTaskController extends ChangeNotifier {
     int taskId,
   ) async {
     try {
-      
-      final timeFormatted = _notificationService.parseTimeToHHMM(time);
+      final timeFormatted = _parseTimeToHHMM(time);
       final taskDateTimeStr = '$date $timeFormatted';
-      
-      print('🕐 Parsing datetime: $taskDateTimeStr');
-      
       final taskDateTime = DateTime.tryParse(taskDateTimeStr);
-      
-      if (taskDateTime == null) {
-        print('⚠️ Failed to parse datetime: $taskDateTimeStr');
-        return;
-      }
 
-      if (taskDateTime.isBefore(DateTime.now())) {
-        print('⏭️ Task time is in the past, skipping notifications');
-        return;
-      }
+      if (taskDateTime == null) return;
+      if (taskDateTime.isBefore(DateTime.now())) return;
 
-      print('🔔 Scheduling notifications for: $taskDateTime');
-      
       await _notificationService.scheduleTaskNotifications(
         taskTitle: title,
         scheduledDateTime: taskDateTime,
         taskId: taskId,
       );
-
-      await _notificationService.scheduleMissedTaskNotification(
-        taskId: taskId,
-        taskTitle: title,
-        scheduledDateTime: taskDateTime,
-      );
-      
     } catch (e, stackTrace) {
       print('❌ Error scheduling notifications: $e');
-      print('Stack trace: $stackTrace');
+      print(stackTrace);
+    }
+  }
+
+  String _parseTimeToHHMM(String time) {
+    try {
+      // Already HH:MM
+      if (RegExp(r'^\d{1,2}:\d{2}$').hasMatch(time)) return time;
+
+      // 12-hour format
+      final regex = RegExp(r'(\d{1,2}):(\d{2})\s*(AM|PM)', caseSensitive: false);
+      final match = regex.firstMatch(time);
+      if (match != null) {
+        int hour = int.parse(match.group(1)!);
+        final minute = match.group(2)!;
+        final period = match.group(3)!.toUpperCase();
+
+        if (period == 'PM' && hour != 12) hour += 12;
+        if (period == 'AM' && hour == 12) hour = 0;
+
+        return '${hour.toString().padLeft(2, '0')}:$minute';
+      }
+
+      return time;
+    } catch (e) {
+      print('⚠️ Error parsing time: $e');
+      return time;
     }
   }
 

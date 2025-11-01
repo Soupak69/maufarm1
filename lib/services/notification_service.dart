@@ -1,6 +1,7 @@
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 import 'package:timezone/timezone.dart' as tz;
 import 'package:timezone/data/latest.dart' as tz;
+import 'package:supabase_flutter/supabase_flutter.dart';
 import '../main.dart';
 
 class NotificationService {
@@ -8,48 +9,78 @@ class NotificationService {
   factory NotificationService() => _instance;
   NotificationService._internal();
 
- 
+  final _supabase = Supabase.instance.client;
+
+  // Initialize notification plugin
   Future<void> initialize() async {
     tz.initializeTimeZones();
+
+    const initializationSettingsAndroid =
+        AndroidInitializationSettings('@mipmap/ic_launcher');
+    const initializationSettingsIOS = DarwinInitializationSettings();
+
+    const initializationSettings = InitializationSettings(
+      android: initializationSettingsAndroid,
+      iOS: initializationSettingsIOS,
+    );
+
+    await flutterLocalNotificationsPlugin.initialize(
+      initializationSettings,
+      onDidReceiveNotificationResponse: _onNotificationTapped,
+      onDidReceiveBackgroundNotificationResponse: _onNotificationTapped,
+    );
   }
 
-  
-  String parseTimeToHHMM(String time) {
-    try {
-      
-      final timeParts = time.trim().split(' ');
-      if (timeParts.length == 2) {
-        final hourMinute = timeParts[0].split(':');
-        int hour = int.parse(hourMinute[0]);
-        final minute = hourMinute.length > 1 ? hourMinute[1] : '00';
-        final period = timeParts[1].toUpperCase();
-
-        if (period == 'PM' && hour != 12) {
-          hour += 12;
-        } else if (period == 'AM' && hour == 12) {
-          hour = 0;
-        }
-
-        return '${hour.toString().padLeft(2, '0')}:$minute:00';
+  // When user taps a notification
+  void _onNotificationTapped(NotificationResponse response) async {
+    final payload = response.payload;
+    if (payload != null && payload.isNotEmpty) {
+      final taskId = int.tryParse(payload.split('-').first ?? '');
+      if (taskId != null) {
+        await _supabase
+            .from('notifications')
+            .update({'is_triggered': true})
+            .eq('task_id', taskId);
+        print('🔔 Notification $taskId marked as triggered');
       }
-      
-      
-      return time.contains(':') ? '$time:00' : time;
-    } catch (e) {
-      print('Error parsing time: $e');
-      return time;
     }
   }
 
-  
+  // Save notification to Supabase when scheduled
+  Future<void> _saveNotificationToSupabase({
+    required int taskId,
+    required String title,
+    required String body,
+    required String notificationType,
+  }) async {
+    try {
+      final userId = _supabase.auth.currentUser?.id;
+      if (userId == null) return;
+
+      await _supabase.from('notifications').insert({
+        'user_id': userId,
+        'task_id': taskId,
+        'title': title,
+        'body': body,
+        'notification_type': notificationType,
+        'is_read': false,
+        'is_deleted': false,
+        'is_triggered': false,
+        'created_at': DateTime.now().toIso8601String(),
+      });
+      print('📝 Saved notification to Supabase');
+    } catch (e) {
+      print('❌ Error saving notification to Supabase: $e');
+    }
+  }
+
+  // Schedule task notifications (30, 15, 5 mins before + main)
   Future<void> scheduleTaskNotifications({
     required String taskTitle,
     required DateTime scheduledDateTime,
     required int taskId,
-    String? priority,
   }) async {
     try {
-      
       const notificationDetails = NotificationDetails(
         android: AndroidNotificationDetails(
           'task_channel_id',
@@ -64,62 +95,52 @@ class NotificationService {
 
       final now = DateTime.now();
 
-      
-      final thirtyMinBefore = scheduledDateTime.subtract(const Duration(minutes: 30));
-      if (thirtyMinBefore.isAfter(now)) {
-        final tzThirtyMinutesBefore = tz.TZDateTime.from(thirtyMinBefore, tz.local);
-        await flutterLocalNotificationsPlugin.zonedSchedule(
-          taskId + 3000000, 
-          'Task Reminder',
-          '$taskTitle (in 30 minutes)',
-          tzThirtyMinutesBefore,
-          notificationDetails,
-          androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+      Future<void> schedule(int offsetMinutes, int idOffset, String label) async {
+        final reminderTime =
+            scheduledDateTime.subtract(Duration(minutes: offsetMinutes));
+        if (reminderTime.isAfter(now)) {
+          final tzTime = tz.TZDateTime.from(reminderTime, tz.local);
+          await flutterLocalNotificationsPlugin.zonedSchedule(
+            taskId + idOffset,
+            'Task Reminder',
+            '$taskTitle ($label)',
+            tzTime,
+            notificationDetails,
+            androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
+            payload: '$taskId-$label',
+          );
 
-          payload: '$taskId-30min',
-        );
-        print('✅ Scheduled 30-min notification for task $taskId at $tzThirtyMinutesBefore');
-      } else {
-        print('⏭️ Skipped 30-min notification (time already passed)');
+          await _saveNotificationToSupabase(
+            taskId: taskId,
+            title: 'Task Reminder',
+            body: '$taskTitle ($label)',
+            notificationType: label,
+          );
+
+          // Auto-mark as triggered when time arrives
+          final delay = reminderTime.difference(now);
+          Future.delayed(delay, () async {
+            try {
+              await _supabase
+                  .from('notifications')
+                  .update({'is_triggered': true})
+                  .eq('task_id', taskId)
+                  .eq('notification_type', label);
+              print('🔔 Notification $taskId ($label) triggered at $reminderTime');
+            } catch (e) {
+              print('❌ Failed to mark triggered: $e');
+            }
+          });
+
+          print('✅ Scheduled $label notification for task $taskId at $tzTime');
+        }
       }
 
-      
-      final fifteenMinBefore = scheduledDateTime.subtract(const Duration(minutes: 15));
-      if (fifteenMinBefore.isAfter(now)) {
-        final tzFifteenMinutesBefore = tz.TZDateTime.from(fifteenMinBefore, tz.local);
-        await flutterLocalNotificationsPlugin.zonedSchedule(
-          taskId + 2000000, 
-          'Task Reminder',
-          '$taskTitle (in 15 minutes)',
-          tzFifteenMinutesBefore,
-          notificationDetails,
-          androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
-          payload: '$taskId-15min',
-        );
-        print('✅ Scheduled 15-min notification for task $taskId at $tzFifteenMinutesBefore');
-      } else {
-        print('⏭️ Skipped 15-min notification (time already passed)');
-      }
+      await schedule(30, 3000000, '30min');
+      await schedule(15, 2000000, '15min');
+      await schedule(5, 1000000, '5min');
 
-
-      final fiveMinBefore = scheduledDateTime.subtract(const Duration(minutes: 5));
-      if (fiveMinBefore.isAfter(now)) {
-        final tzFiveMinutesBefore = tz.TZDateTime.from(fiveMinBefore, tz.local);
-        await flutterLocalNotificationsPlugin.zonedSchedule(
-          taskId + 1000000, 
-          'Task Reminder',
-          '$taskTitle (in 5 minutes)',
-          tzFiveMinutesBefore,
-          notificationDetails,
-          androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
-          payload: '$taskId-5min',
-        );
-        print('✅ Scheduled 5-min notification for task $taskId at $tzFiveMinutesBefore');
-      } else {
-        print('⏭️ Skipped 5-min notification (time already passed)');
-      }
-
-      
+      // Main notification
       if (scheduledDateTime.isAfter(now)) {
         final tzScheduledDate = tz.TZDateTime.from(scheduledDateTime, tz.local);
         await flutterLocalNotificationsPlugin.zonedSchedule(
@@ -129,87 +150,105 @@ class NotificationService {
           tzScheduledDate,
           notificationDetails,
           androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
-          payload: '$taskId',
+          payload: '$taskId-main',
         );
-        print('✅ Scheduled main notification for task $taskId at $tzScheduledDate');
-      } else {
-        print('⏭️ Skipped main notification (time already passed)');
-      }
 
-      print('🔔 All notifications scheduled successfully for task $taskId');
+        await _saveNotificationToSupabase(
+          taskId: taskId,
+          title: 'Task Reminder',
+          body: taskTitle,
+          notificationType: 'main',
+        );
+
+        final delay = scheduledDateTime.difference(now);
+        Future.delayed(delay, () async {
+          try {
+            await _supabase
+                .from('notifications')
+                .update({'is_triggered': true})
+                .eq('task_id', taskId)
+                .eq('notification_type', 'main');
+            print('🔔 Main notification $taskId triggered at $scheduledDateTime');
+          } catch (e) {
+            print('❌ Failed to mark main triggered: $e');
+          }
+        });
+
+        print('✅ Scheduled main notification for task $taskId at $tzScheduledDate');
+      }
     } catch (e, stackTrace) {
       print('❌ Error scheduling notifications: $e');
-      print('Stack trace: $stackTrace');
-    
+      print(stackTrace);
     }
   }
 
-  
-Future<void> scheduleMissedTaskNotification({
-  required int taskId,
-  required String taskTitle,
-  required DateTime scheduledDateTime,
-}) async {
-  try {
-    final missedTime = scheduledDateTime.add(const Duration(minutes: 30));
-    final now = DateTime.now();
+  // 🧹 NEW: Cancel all local + Supabase notifications for a task
+  Future<void> removeTaskNotifications(int taskId) async {
+    try {
+      // Cancel all local notifications
+      for (final offset in [0, 1000000, 2000000, 3000000, 4000000]) {
+        await flutterLocalNotificationsPlugin.cancel(taskId + offset);
+      }
 
-    if (missedTime.isBefore(now)) {
-      print('⏭️ Skipped missed-task check for $taskId (already past)');
-      return;
+      // Soft-delete from Supabase
+      await _supabase
+          .from('notifications')
+          .update({'is_deleted': true})
+          .eq('task_id', taskId);
+
+      print('🗑️ Removed notifications for task $taskId (local + Supabase)');
+    } catch (e) {
+      print('❌ Error removing task notifications: $e');
     }
+  }
 
-    final tzMissedTime = tz.TZDateTime.from(missedTime, tz.local);
+  // 🗂️ Stream triggered + active notifications
+  Stream<List<Map<String, dynamic>>> getNotifications() {
+    final userId = _supabase.auth.currentUser?.id;
+    if (userId == null) return Stream.value([]);
 
-    const notificationDetails = NotificationDetails(
-      android: AndroidNotificationDetails(
-        'missed_task_channel',
-        'Missed Tasks',
-        channelDescription: 'Notifies if a task remains pending 30 mins after its time',
-        importance: Importance.max,
-        priority: Priority.high,
-        ticker: 'Missed Task Reminder',
-      ),
-      iOS: DarwinNotificationDetails(),
-    );
+    return _supabase
+        .from('notifications')
+        .stream(primaryKey: ['id'])
+        .order('created_at', ascending: false)
+        .map((data) {
+      return (data as List)
+          .where((n) =>
+              n['user_id'] == userId &&
+              n['is_deleted'] == false &&
+              n['is_triggered'] == true)
+          .cast<Map<String, dynamic>>()
+          .toList();
+    });
+  }
 
-    await flutterLocalNotificationsPlugin.zonedSchedule(
-      taskId + 4000000, 
-      'Missed Task',
-      'You missed your task: $taskTitle',
-      tzMissedTime,
-      notificationDetails,
-      androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
-      payload: '$taskId-missed',
-    );
+  // Mark notification(s) as read or deleted
+  Future<void> markAsRead(int id) async {
+    await _supabase.from('notifications').update({'is_read': true}).eq('id', id);
+  }
 
-    print('🕒 Scheduled missed-task check for $taskId at $tzMissedTime');
-  } catch (e, stackTrace) {
-    print('❌ Error scheduling missed-task notification: $e');
-    print('Stack trace: $stackTrace');
+  Future<void> markAllAsRead() async {
+    final userId = _supabase.auth.currentUser?.id;
+    if (userId == null) return;
+    await _supabase
+        .from('notifications')
+        .update({'is_read': true})
+        .eq('user_id', userId)
+        .eq('is_deleted', false);
+  }
+
+  Future<void> deleteNotification(int id) async {
+    await _supabase.from('notifications').update({'is_deleted': true}).eq('id', id);
+  }
+
+  Future<void> clearAllNotifications() async {
+    final userId = _supabase.auth.currentUser?.id;
+    if (userId == null) return;
+    await _supabase
+        .from('notifications')
+        .update({'is_deleted': true})
+        .eq('user_id', userId);
   }
 }
 
 
-  Future<void> cancelTaskNotifications(int taskId) async {
-    try {
-      await flutterLocalNotificationsPlugin.cancel(taskId);
-      await flutterLocalNotificationsPlugin.cancel(taskId + 1000000); 
-      await flutterLocalNotificationsPlugin.cancel(taskId + 2000000); 
-      await flutterLocalNotificationsPlugin.cancel(taskId + 3000000); 
-      await flutterLocalNotificationsPlugin.cancel(taskId + 4000000);
-      print('🗑️ Cancelled all notifications for task $taskId');
-    } catch (e) {
-      print('❌ Error cancelling notifications: $e');
-    }
-  }
-
-  Future<void> cancelAllNotifications() async {
-    try {
-      await flutterLocalNotificationsPlugin.cancelAll();
-      print('🗑️ Cancelled all notifications');
-    } catch (e) {
-      print('❌ Error cancelling all notifications: $e');
-    }
-  }
-}
