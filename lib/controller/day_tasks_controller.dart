@@ -29,7 +29,7 @@ class TaskController extends ChangeNotifier {
 
       final response = await Supabase.instance.client
           .from('tasks')
-          .select()
+          .select('*, fields(name)')
           .eq('uuid', user.id)
           .eq('is_deleted', 'not_deleted')
           .order('date', ascending: true);
@@ -37,7 +37,22 @@ class TaskController extends ChangeNotifier {
       debugPrint('Raw response: $response');
       debugPrint('Response type: ${response.runtimeType}');
 
-      tasks = List<Map<String, dynamic>>.from(response as List);
+     
+      tasks = (response as List).map<Map<String, dynamic>>((task) {
+        final taskMap = Map<String, dynamic>.from(task);
+        
+       
+        if (taskMap['fields'] != null && taskMap['fields'] is Map) {
+          final fieldData = taskMap['fields'] as Map<String, dynamic>;
+          taskMap['field_name'] = fieldData['name'];
+        }
+        
+        
+        taskMap.remove('fields');
+        
+        return taskMap;
+      }).toList();
+      
       debugPrint('Loaded ${tasks.length} tasks: $tasks');
     } catch (e, stackTrace) {
       debugPrint('Error loading tasks: $e');
@@ -65,7 +80,7 @@ class TaskController extends ChangeNotifier {
         notifyListeners();
       }
 
-      // Cancel notifications when task is marked as done
+      
       if (isDone) {
         await _notificationService.removeTaskNotifications(taskId);
         debugPrint('🛑 Removed notifications for completed task $taskId');
@@ -92,7 +107,7 @@ class TaskController extends ChangeNotifier {
       tasks.removeWhere((task) => task['id'] == taskId);
       notifyListeners();
 
-      // Remove all notifications for deleted task
+      
       await _notificationService.removeTaskNotifications(taskId);
       debugPrint('🗑️ Removed notifications for deleted task $taskId');
 

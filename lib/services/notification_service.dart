@@ -52,6 +52,8 @@ class NotificationService {
     required String title,
     required String body,
     required String notificationType,
+    String? priority,
+    String? fieldName,
   }) async {
     try {
       final userId = _supabase.auth.currentUser?.id;
@@ -63,6 +65,8 @@ class NotificationService {
         'title': title,
         'body': body,
         'notification_type': notificationType,
+        'priority': priority,
+        'field_name': fieldName,
         'is_read': false,
         'is_deleted': false,
         'is_triggered': false,
@@ -79,8 +83,26 @@ class NotificationService {
     required String taskTitle,
     required DateTime scheduledDateTime,
     required int taskId,
+    String? priority,
+    String? fieldName,
   }) async {
     try {
+      
+      String buildNotificationBody(String label) {
+        final parts = <String>[];
+        parts.add(taskTitle);
+        if (fieldName != null && fieldName.isNotEmpty) {
+          parts.add('Field: $fieldName');
+        }
+        if (priority != null && priority.isNotEmpty) {
+          parts.add('Priority: $priority');
+        }
+        if (label.isNotEmpty) {
+          parts.add('($label)');
+        }
+        return parts.join('\n');
+      }
+
       const notificationDetails = NotificationDetails(
         android: AndroidNotificationDetails(
           'task_channel_id',
@@ -89,6 +111,7 @@ class NotificationService {
           importance: Importance.max,
           priority: Priority.high,
           ticker: 'Task Reminder',
+          styleInformation: BigTextStyleInformation(''),
         ),
         iOS: DarwinNotificationDetails(),
       );
@@ -100,10 +123,12 @@ class NotificationService {
             scheduledDateTime.subtract(Duration(minutes: offsetMinutes));
         if (reminderTime.isAfter(now)) {
           final tzTime = tz.TZDateTime.from(reminderTime, tz.local);
+          final notificationBody = buildNotificationBody(label);
+          
           await flutterLocalNotificationsPlugin.zonedSchedule(
             taskId + idOffset,
             'Task Reminder',
-            '$taskTitle ($label)',
+            notificationBody,
             tzTime,
             notificationDetails,
             androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
@@ -113,11 +138,12 @@ class NotificationService {
           await _saveNotificationToSupabase(
             taskId: taskId,
             title: 'Task Reminder',
-            body: '$taskTitle ($label)',
+            body: notificationBody,
             notificationType: label,
+            priority: priority,
+            fieldName: fieldName,
           );
 
-          // Auto-mark as triggered when time arrives
           final delay = reminderTime.difference(now);
           Future.delayed(delay, () async {
             try {
@@ -140,13 +166,15 @@ class NotificationService {
       await schedule(15, 2000000, '15min');
       await schedule(5, 1000000, '5min');
 
-      // Main notification
+      
       if (scheduledDateTime.isAfter(now)) {
         final tzScheduledDate = tz.TZDateTime.from(scheduledDateTime, tz.local);
+        final mainNotificationBody = buildNotificationBody('');
+        
         await flutterLocalNotificationsPlugin.zonedSchedule(
           taskId,
           'Task Reminder',
-          taskTitle,
+          mainNotificationBody,
           tzScheduledDate,
           notificationDetails,
           androidScheduleMode: AndroidScheduleMode.exactAllowWhileIdle,
@@ -156,8 +184,10 @@ class NotificationService {
         await _saveNotificationToSupabase(
           taskId: taskId,
           title: 'Task Reminder',
-          body: taskTitle,
+          body: mainNotificationBody,
           notificationType: 'main',
+          priority: priority,
+          fieldName: fieldName,
         );
 
         final delay = scheduledDateTime.difference(now);
@@ -182,15 +212,14 @@ class NotificationService {
     }
   }
 
-  // 🧹 NEW: Cancel all local + Supabase notifications for a task
   Future<void> removeTaskNotifications(int taskId) async {
     try {
-      // Cancel all local notifications
+
       for (final offset in [0, 1000000, 2000000, 3000000, 4000000]) {
         await flutterLocalNotificationsPlugin.cancel(taskId + offset);
       }
 
-      // Soft-delete from Supabase
+      
       await _supabase
           .from('notifications')
           .update({'is_deleted': true})
@@ -202,7 +231,6 @@ class NotificationService {
     }
   }
 
-  // 🗂️ Stream triggered + active notifications
   Stream<List<Map<String, dynamic>>> getNotifications() {
     final userId = _supabase.auth.currentUser?.id;
     if (userId == null) return Stream.value([]);
@@ -250,5 +278,3 @@ class NotificationService {
         .eq('user_id', userId);
   }
 }
-
-

@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:supabase_flutter/supabase_flutter.dart';
 import '../services/notification_service.dart';
+import '../models/field_model.dart';
 
 class AddTaskController extends ChangeNotifier {
   final TextEditingController dateController = TextEditingController();
@@ -8,6 +9,9 @@ class AddTaskController extends ChangeNotifier {
   final TextEditingController titleController = TextEditingController();
 
   String selectedPriority = 'Normal';
+  int? selectedFarmId;
+  List<Farm> farms = [];
+  bool isLoadingFarms = false;
   bool isLoading = false;
 
   String? dateError;
@@ -30,6 +34,7 @@ class AddTaskController extends ChangeNotifier {
   }) {
     _notificationService.initialize();
     _initializeFields();
+    _loadFarms();
   }
 
   void _initializeFields() {
@@ -38,6 +43,36 @@ class AddTaskController extends ChangeNotifier {
       timeController.text = taskToEdit!['time'] ?? '';
       titleController.text = taskToEdit!['title'] ?? '';
       selectedPriority = taskToEdit!['priority'] ?? 'Normal';
+      selectedFarmId = taskToEdit!['field_id'] as int?;
+    }
+  }
+
+  Future<void> _loadFarms() async {
+    isLoadingFarms = true;
+    notifyListeners();
+
+    try {
+      final user = Supabase.instance.client.auth.currentUser;
+      if (user == null) {
+        isLoadingFarms = false;
+        notifyListeners();
+        return;
+      }
+
+      final response = await Supabase.instance.client
+          .from('fields')
+          .select()
+          .eq('user_id', user.id)
+          .order('name');
+
+      farms = (response as List)
+          .map((json) => Farm.fromJson(json))
+          .toList();
+    } catch (e) {
+      print('❌ Error loading farms: $e');
+    } finally {
+      isLoadingFarms = false;
+      notifyListeners();
     }
   }
 
@@ -108,23 +143,43 @@ class AddTaskController extends ChangeNotifier {
         return;
       }
 
+      final taskData = {
+        'date': date,
+        'time': time,
+        'title': title,
+        'priority': selectedPriority,
+        'uuid': user.id,
+        'is_deleted': 'not_deleted',
+        'status': 'pending',
+        if (selectedFarmId != null) 'field_id': selectedFarmId,
+      };
+
       final response = await Supabase.instance.client
           .from('tasks')
-          .insert({
-            'date': date,
-            'time': time,
-            'title': title,
-            'priority': selectedPriority,
-            'uuid': user.id,
-            'is_deleted': 'not_deleted',
-            'status': 'pending',
-          })
+          .insert(taskData)
           .select()
           .single();
 
       final taskId = response['id'] as int;
 
-      await _scheduleNotifications(date, time, title, taskId);
+      
+      String? fieldName;
+      if (selectedFarmId != null) {
+        final selectedFarm = farms.firstWhere(
+          (farm) => farm.id == selectedFarmId,
+          orElse: () => farms.first,
+        );
+        fieldName = selectedFarm.name;
+      }
+
+      await _scheduleNotifications(
+        date, 
+        time, 
+        title, 
+        taskId,
+        priority: selectedPriority,
+        fieldName: fieldName,
+      );
 
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -168,19 +223,21 @@ class AddTaskController extends ChangeNotifier {
         return;
       }
 
+      final taskData = {
+        'date': date,
+        'time': time,
+        'title': title,
+        'priority': selectedPriority,
+        if (selectedFarmId != null) 'field_id': selectedFarmId,
+      };
+
       final response = await Supabase.instance.client
           .from('tasks')
-          .update({
-            'date': date,
-            'time': time,
-            'title': title,
-            'priority': selectedPriority,
-          })
+          .update(taskData)
           .eq('id', taskId)
           .select()
           .single();
 
-      // Remove old notifications and schedule new ones
       await _notificationService.removeTaskNotifications(taskId);
       await _scheduleNotifications(date, time, title, taskId);
 
@@ -206,37 +263,39 @@ class AddTaskController extends ChangeNotifier {
     }
   }
 
-  Future<void> _scheduleNotifications(
-    String date,
-    String time,
-    String title,
-    int taskId,
-  ) async {
-    try {
-      final timeFormatted = _parseTimeToHHMM(time);
-      final taskDateTimeStr = '$date $timeFormatted';
-      final taskDateTime = DateTime.tryParse(taskDateTimeStr);
+Future<void> _scheduleNotifications(
+  String date,
+  String time,
+  String title,
+  int taskId, {
+  String? priority,
+  String? fieldName,
+}) async {
+  try {
+    final timeFormatted = _parseTimeToHHMM(time);
+    final taskDateTimeStr = '$date $timeFormatted';
+    final taskDateTime = DateTime.tryParse(taskDateTimeStr);
 
-      if (taskDateTime == null) return;
-      if (taskDateTime.isBefore(DateTime.now())) return;
+    if (taskDateTime == null) return;
+    if (taskDateTime.isBefore(DateTime.now())) return;
 
-      await _notificationService.scheduleTaskNotifications(
-        taskTitle: title,
-        scheduledDateTime: taskDateTime,
-        taskId: taskId,
-      );
-    } catch (e, stackTrace) {
-      print('❌ Error scheduling notifications: $e');
-      print(stackTrace);
-    }
+    await _notificationService.scheduleTaskNotifications(
+      taskTitle: title,
+      scheduledDateTime: taskDateTime,
+      taskId: taskId,
+      priority: priority,
+      fieldName: fieldName,
+    );
+  } catch (e, stackTrace) {
+    print('❌ Error scheduling notifications: $e');
+    print(stackTrace);
   }
+}
 
   String _parseTimeToHHMM(String time) {
     try {
-      // Already HH:MM
       if (RegExp(r'^\d{1,2}:\d{2}$').hasMatch(time)) return time;
 
-      // 12-hour format
       final regex = RegExp(r'(\d{1,2}):(\d{2})\s*(AM|PM)', caseSensitive: false);
       final match = regex.firstMatch(time);
       if (match != null) {
@@ -264,6 +323,11 @@ class AddTaskController extends ChangeNotifier {
 
   void setPriority(String priority) {
     selectedPriority = priority;
+    notifyListeners();
+  }
+
+  void setSelectedFarm(int? farmId) {
+    selectedFarmId = farmId;
     notifyListeners();
   }
 }

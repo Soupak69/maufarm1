@@ -77,7 +77,7 @@ class _AddTaskModalState extends State<AddTaskModal> {
                     ),
                     const SizedBox(height: 20),
 
-                    // General error message (e.g., auth errors)
+                    // General error message
                     if (_controller.generalError != null) ...[
                       Container(
                         padding: const EdgeInsets.all(12),
@@ -243,6 +243,48 @@ class _AddTaskModalState extends State<AddTaskModal> {
                       },
                     ),
                     const SizedBox(height: 16),
+
+                    /// Farm Selection Dropdown
+                        if (_controller.isLoadingFarms)
+                          const Center(
+                            child: Padding(
+                              padding: EdgeInsets.symmetric(vertical: 16),
+                              child: CircularProgressIndicator(),
+                            ),
+                          )
+                        else if (_controller.farms.isNotEmpty) ...[
+                          DropdownButtonFormField<int?>(
+                            value: _controller.selectedFarmId,
+                            decoration: InputDecoration(
+                              labelText: 'Field (Optional)',
+                              border: const OutlineInputBorder(),
+                              prefixIcon: const Icon(Icons.agriculture),
+                              focusedBorder: OutlineInputBorder(
+                                borderSide: const BorderSide(
+                                  color: Color.fromARGB(255, 179, 240, 182),
+                                ),
+                                borderRadius: BorderRadius.circular(4),
+                              ),
+                              floatingLabelStyle: TextStyle(
+                                color: theme.brightness == Brightness.dark ? Colors.white : Colors.black,
+                              ),
+                            ),
+                            items: [
+                              DropdownMenuItem<int?>(
+                                value: null,
+                                child: const Text('No field selected'),
+                              ),
+                              ..._controller.farms.map((farm) => DropdownMenuItem<int?>(
+                                    value: farm.id,
+                                    child: Text(farm.name),
+                                  )),
+                            ],
+                            onChanged: (value) => _controller.setSelectedFarm(value),
+                          ),
+                          const SizedBox(height: 16),
+                        ]
+                        else
+                          const Center(child: Text('No field available')),
 
                     Text(
                       ('priority').tr(),

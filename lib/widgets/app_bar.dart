@@ -53,25 +53,25 @@ class _CustomAppBarState extends State<CustomAppBar> {
     }
   }
 
-  Future<void> _checkUnreadNotifications() async {
-    final user = supabase.auth.currentUser;
-    if (user == null) return;
+Future<void> _checkUnreadNotifications() async {
+  final user = supabase.auth.currentUser;
+  if (user == null) return;
 
-    final response = await supabase
-        .from('notifications')
-        .select('id')
-        .eq('user_id', user.id)
-        .eq('is_read', false)
-        .eq('is_deleted', false);
+  final response = await supabase
+      .from('notifications')
+      .select('id')
+      .eq('user_id', user.id)
+      .eq('is_read', false)
+      .eq('is_deleted', false)
+      .eq('is_triggered', true); 
+  final data = List<Map<String, dynamic>>.from(response);
 
-    final data = List<Map<String, dynamic>>.from(response);
-
-    if (mounted) {
-      setState(() {
-        hasUnread = data.isNotEmpty;
-      });
-    }
+  if (mounted) {
+    setState(() {
+      hasUnread = data.isNotEmpty;
+    });
   }
+}
 
 void _listenToNotifications() {
   final user = supabase.auth.currentUser;
@@ -82,16 +82,17 @@ void _listenToNotifications() {
       .stream(primaryKey: ['id'])
       .listen((data) {
     final activeNotifications = (data as List)
-        .where((n) => n['is_deleted'] == false)
+        .where((n) => n['is_deleted'] == false && n['is_triggered'] == true) 
         .toList();
-    
+
     final unreadExists = activeNotifications.any((n) => n['is_read'] == false);
-    
+
     if (mounted) {
       setState(() => hasUnread = unreadExists);
     }
   });
 }
+
 
   @override
   Widget build(BuildContext context) {

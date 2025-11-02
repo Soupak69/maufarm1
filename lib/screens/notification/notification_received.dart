@@ -13,7 +13,7 @@ class _NotificationReceivedScreenState extends State<NotificationReceivedScreen>
   final supabase = Supabase.instance.client;
   List<Map<String, dynamic>> notifications = [];
   bool isLoading = true;
-  Set<int> selectedNotifications = {}; // store IDs of selected notifications
+  Set<int> selectedNotifications = {};
   bool isSelectionMode = false;
 
   @override
@@ -37,7 +37,6 @@ class _NotificationReceivedScreenState extends State<NotificationReceivedScreen>
     setState(() {
       notifications = List<Map<String, dynamic>>.from(response);
       isLoading = false;
-      // reset selection mode if list reloads
       selectedNotifications.clear();
       isSelectionMode = false;
     });
@@ -96,11 +95,19 @@ class _NotificationReceivedScreenState extends State<NotificationReceivedScreen>
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+
     return Scaffold(
       appBar: AppBar(
-        title: Text(isSelectionMode
-            ? '${selectedNotifications.length} selected'
-            : 'Notifications'),
+        title: Text(
+          isSelectionMode
+              ? '${selectedNotifications.length} selected'
+              : 'Notifications',
+          style: TextStyle(color: colorScheme.onSurface),
+        ),
+        backgroundColor: colorScheme.surface,
+        iconTheme: IconThemeData(color: colorScheme.onSurface),
         actions: [
           if (!isSelectionMode)
             IconButton(
@@ -109,19 +116,30 @@ class _NotificationReceivedScreenState extends State<NotificationReceivedScreen>
               onPressed: _markAllAsRead,
             ),
           IconButton(
-            icon: const Icon(Icons.delete),
+            icon: const Icon(Icons.delete_outline),
             tooltip: isSelectionMode ? 'Delete selected' : 'Delete all',
             onPressed: _deleteSelected,
           ),
         ],
       ),
       body: isLoading
-          ? const Center(child: CircularProgressIndicator())
+          ? Center(
+              child: CircularProgressIndicator(
+                color: colorScheme.primary,
+              ),
+            )
           : notifications.isEmpty
-              ? const Center(child: Text('No notifications'))
+              ? Center(
+                  child: Text(
+                    'No notifications',
+                    style: TextStyle(color: colorScheme.onSurfaceVariant),
+                  ),
+                )
               : RefreshIndicator(
+                  color: colorScheme.primary,
                   onRefresh: _loadNotifications,
                   child: ListView.builder(
+                    padding: const EdgeInsets.symmetric(vertical: 8),
                     itemCount: notifications.length,
                     itemBuilder: (context, index) {
                       final notif = notifications[index];
@@ -130,30 +148,78 @@ class _NotificationReceivedScreenState extends State<NotificationReceivedScreen>
                       );
 
                       final isSelected = selectedNotifications.contains(notif['id']);
+                      final isRead = notif['is_read'] ?? false;
 
                       return GestureDetector(
                         onLongPress: () => _toggleSelection(notif['id']),
                         onTap: () {
                           if (isSelectionMode) {
                             _toggleSelection(notif['id']);
-                          } else {
-                            if (!notif['is_read']) _markAsRead(notif['id']);
+                          } else if (!isRead) {
+                            _markAsRead(notif['id']);
                           }
                         },
                         child: Container(
-                          color: isSelected
-                              ? Colors.blue.withOpacity(0.2)
-                              : Colors.transparent,
-                          child: ListTile(
-                            leading: Icon(
-                              notif['is_read']
-                                  ? Icons.notifications_none
-                                  : Icons.notifications_active,
-                              color: notif['is_read'] ? Colors.grey : Colors.green,
+                          margin: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: isSelected
+                                ? colorScheme.primary.withOpacity(0.15)
+                                : colorScheme.surfaceVariant.withOpacity(0.3),
+                            borderRadius: BorderRadius.circular(16),
+                            border: Border.all(
+                              color: isSelected
+                                  ? colorScheme.primary
+                                  : isRead
+                                      ? Colors.transparent
+                                      : colorScheme.primaryContainer,
+                              width: isRead ? 0.5 : 1.5,
                             ),
-                            title: Text(notif['title']),
-                            subtitle: Text('${notif['body']}\n$date'),
-                            isThreeLine: true,
+                          ),
+                          child: ListTile(
+                            contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+                            leading: Icon(
+                              isRead
+                                  ? Icons.notifications_none_outlined
+                                  : Icons.notifications_active_outlined,
+                              color: isRead
+                                  ? colorScheme.onSurfaceVariant
+                                  : colorScheme.primary,
+                            ),
+                            title: Text(
+                              notif['title'] ?? '',
+                              style: theme.textTheme.titleMedium?.copyWith(
+                                color: colorScheme.onSurface,
+                                fontWeight: isRead ? FontWeight.normal : FontWeight.w600,
+                              ),
+                            ),
+                            subtitle: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              children: [
+                                Text(
+                                  notif['body'] ?? '',
+                                  style: theme.textTheme.bodyMedium?.copyWith(
+                                    color: colorScheme.onSurfaceVariant,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  date,
+                                  style: theme.textTheme.bodySmall?.copyWith(
+                                    color: colorScheme.onSurfaceVariant.withOpacity(0.7),
+                                  ),
+                                ),
+                              ],
+                            ),
+                            trailing: !isRead
+                                ? Container(
+                                    width: 10,
+                                    height: 10,
+                                    decoration: BoxDecoration(
+                                      color: colorScheme.primary,
+                                      shape: BoxShape.circle,
+                                    ),
+                                  )
+                                : null,
                           ),
                         ),
                       );

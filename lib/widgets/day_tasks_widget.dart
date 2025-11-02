@@ -36,7 +36,7 @@ class _DayTasksListState extends State<DayTasksList> {
     final theme = Theme.of(context);
 
     return SizedBox(
-      height: 180,
+      height: 200,
       child: ListView.separated(
         clipBehavior: Clip.none,
         padding: const EdgeInsets.symmetric(vertical: 8),
@@ -49,6 +49,7 @@ class _DayTasksListState extends State<DayTasksList> {
           final date = _formatDate(task['date']);
           final status = task['status'] ?? 'pending';
           final isChecked = status == 'done';
+          final farmName = task['field_name'] as String?;
 
           Color priorityColor;
           switch (priority) {
@@ -63,7 +64,7 @@ class _DayTasksListState extends State<DayTasksList> {
           }
 
           return Container(
-            width: 180,
+            width: 200,
             padding: const EdgeInsets.all(12),
             decoration: BoxDecoration(
               color: theme.colorScheme.surface,
@@ -202,7 +203,7 @@ class _DayTasksListState extends State<DayTasksList> {
                     ),
                   ],
                 ),
-                const SizedBox(height: 4),
+                const SizedBox(height: 8),
 
                 Text(
                   task['title'] ?? '',
@@ -214,6 +215,33 @@ class _DayTasksListState extends State<DayTasksList> {
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                 ),
+                
+                if (farmName != null && farmName.isNotEmpty) ...[
+                  const SizedBox(height: 6),
+                  Row(
+                    children: [
+                      Icon(
+                        Icons.agriculture,
+                        size: 14,
+                        color: theme.colorScheme.onSurface.withOpacity(0.6),
+                      ),
+                      const SizedBox(width: 4),
+                      Expanded(
+                        child: Text(
+                          farmName,
+                          style: TextStyle(
+                            color: theme.colorScheme.onSurface.withOpacity(0.6),
+                            fontSize: 12,
+                            fontStyle: FontStyle.italic,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+                
                 const Spacer(),
 
                 Row(
