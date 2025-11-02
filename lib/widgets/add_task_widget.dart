@@ -254,7 +254,7 @@ class _AddTaskModalState extends State<AddTaskModal> {
                           )
                         else if (_controller.farms.isNotEmpty) ...[
                           DropdownButtonFormField<int?>(
-                            value: _controller.selectedFarmId,
+                            initialValue: _controller.selectedFarmId,
                             decoration: InputDecoration(
                               labelText: 'Field (Optional)',
                               border: const OutlineInputBorder(),

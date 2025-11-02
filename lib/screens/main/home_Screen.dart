@@ -8,8 +8,8 @@ import '../../widgets/app_bar.dart';
 import '../../widgets/weather.dart';
 import '../../widgets/day_tasks_widget.dart';
 import '../../widgets/add_task_widget.dart';
-import '../farm/field_screen.dart';
-import '../farm/field_details.dart';
+import '../fields/field_screen.dart';
+import '../fields/field_details.dart';
 
 class HomeScreen extends StatefulWidget {
   const HomeScreen({super.key});

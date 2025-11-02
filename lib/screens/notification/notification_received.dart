@@ -164,7 +164,7 @@ class _NotificationReceivedScreenState extends State<NotificationReceivedScreen>
                           decoration: BoxDecoration(
                             color: isSelected
                                 ? colorScheme.primary.withOpacity(0.15)
-                                : colorScheme.surfaceVariant.withOpacity(0.3),
+                                : colorScheme.surfaceContainerHighest.withOpacity(0.3),
                             borderRadius: BorderRadius.circular(16),
                             border: Border.all(
                               color: isSelected

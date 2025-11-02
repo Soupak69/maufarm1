@@ -6,6 +6,9 @@ class Farm {
   final String? address;
   final double latitude;
   final double longitude;
+  final double? landSize;
+  final String? landUnit;
+  final List<String>? imageUrls;
   final DateTime? createdAt;
 
   Farm({
@@ -16,6 +19,9 @@ class Farm {
     required this.address,
     required this.latitude,
     required this.longitude,
+    this.landSize,
+    this.landUnit,
+    this.imageUrls,
     this.createdAt,
   });
 
@@ -28,6 +34,13 @@ class Farm {
       address: json['address'] as String?,
       latitude: (json['latitude'] as num).toDouble(),
       longitude: (json['longitude'] as num).toDouble(),
+      landSize: json['land_size'] != null
+          ? (json['land_size'] as num).toDouble()
+          : null,
+      landUnit: json['land_unit'] as String?,
+      imageUrls: json['image_urls'] != null
+          ? List<String>.from(json['image_urls'] as List)
+          : null,
       createdAt: json['created_at'] != null
           ? DateTime.parse(json['created_at'] as String)
           : null,
@@ -43,6 +56,9 @@ class Farm {
       'address': address,
       'latitude': latitude,
       'longitude': longitude,
+      'land_size': landSize,
+      'land_unit': landUnit,
+      'image_urls': imageUrls,
       if (createdAt != null) 'created_at': createdAt!.toIso8601String(),
     };
   }
@@ -55,6 +71,9 @@ class Farm {
     String? address,
     double? latitude,
     double? longitude,
+    double? landSize,
+    String? landUnit,
+    List<String>? imageUrls,
     DateTime? createdAt,
   }) {
     return Farm(
@@ -65,6 +84,9 @@ class Farm {
       address: address ?? this.address,
       latitude: latitude ?? this.latitude,
       longitude: longitude ?? this.longitude,
+      landSize: landSize ?? this.landSize,
+      landUnit: landUnit ?? this.landUnit,
+      imageUrls: imageUrls ?? this.imageUrls,
       createdAt: createdAt ?? this.createdAt,
     );
   }
