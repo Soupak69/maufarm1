@@ -97,7 +97,7 @@ void _listenToNotifications() {
   @override
   Widget build(BuildContext context) {
     return AppBar(
-      backgroundColor: const Color.fromARGB(255, 169, 238, 172),
+      backgroundColor: const Color.fromARGB(255, 124, 170, 126),
       title: Text(
         username.isNotEmpty ? '${'hi'.tr()}, $username' : '',
         style: const TextStyle(
