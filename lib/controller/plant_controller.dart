@@ -28,6 +28,7 @@ class PlantController {
       final response = await supabase
           .from('plant')
           .select('*, fields(name)')
+          .eq('is_deleted', false)
           .order('created_at', ascending: false);
 
       plants = List<Map<String, dynamic>>.from(response);
@@ -69,7 +70,8 @@ class PlantController {
         'image': imageUrl,
         'quantity': quantity,
         'field_id': fieldId,
-        'planting_day': planting_day
+        'planting_day': planting_day,
+        'is_deleted': false,
       });
       return true;
     } catch (e) {
@@ -124,9 +126,9 @@ List<Map<String, dynamic>> sortPlants(
           final aDate = _parsePlantingDate(a['planting_day']);
           final bDate = _parsePlantingDate(b['planting_day']);
           if (aDate == null && bDate == null) return 0;
-          if (aDate == null) return 1; // nulls last
+          if (aDate == null) return 1; 
           if (bDate == null) return -1;
-          return aDate.compareTo(bDate); // oldest first
+          return aDate.compareTo(bDate); 
         });
         break;
     }

@@ -274,14 +274,18 @@ class _PlantScreenState extends State<PlantScreen> {
   final plantingDay = plant['planting_day']?.toString() ?? 'N/A';
   
   return GestureDetector(
-    onTap: () {
-      Navigator.push(
-        context,
-        MaterialPageRoute(
-          builder: (_) => PlantDetailsScreen(plant: plant),
-        ),
-      );
-    },
+  onTap: () async {
+    final result = await Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (_) => PlantDetailsScreen(plant: plant),
+      ),
+    );
+
+    if (result == true && mounted) {
+      await _controller.loadData();
+    }
+  },
     child: ClipRRect(
       borderRadius: BorderRadius.circular(16),
       child: Container(
@@ -563,7 +567,7 @@ void _openAddPlantDialog() {
                     style: TextStyle(color: theme.colorScheme.onSurface),
                   ),
                   const SizedBox(height: 12),
-                   GestureDetector(
+                GestureDetector(
                   onTap: () async {
                     final DateTime? picked = await showDatePicker(
                       context: context,
@@ -577,13 +581,16 @@ void _openAddPlantDialog() {
                   },
                   child: AbsorbPointer(
                     child: TextField(
+                      controller: TextEditingController(
+                        text: plantingDate != null
+                            ? "${plantingDate!.day}/${plantingDate!.month}/${plantingDate!.year}"
+                            : '',
+                      ),
                       decoration: InputDecoration(
                         labelText: 'Planting Day',
-                        hintText: plantingDate != null
-                            ? "${plantingDate!.day}/${plantingDate!.month}/${plantingDate!.year}"
-                            : 'Select a date',
+                        hintText: 'Select a date',
                         border: const OutlineInputBorder(),
-                        focusedBorder: OutlineInputBorder(
+                        focusedBorder: const OutlineInputBorder(
                           borderSide: BorderSide(
                             color: Color.fromARGB(255, 179, 240, 182),
                           ),
