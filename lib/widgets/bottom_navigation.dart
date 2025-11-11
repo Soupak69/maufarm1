@@ -4,6 +4,7 @@ import '../screens/main/home_Screen.dart';
 import '../screens/main/camera_screen.dart';
 import '../screens/main/more_screen.dart';
 import '../screens/main/plant_screen.dart';
+import '../screens/main/chatbot_screen.dart';
 
 class BottomNavigation extends StatefulWidget {
   const BottomNavigation({super.key});
@@ -19,7 +20,7 @@ class _BottomNavigationState extends State<BottomNavigation> {
     const HomeScreen(),
     const PlantScreen(),
     const CameraScreen(),
-    const Placeholder(), // Replace with ChatBotScreen()
+    const ChatBotScreen(), 
     const MoreScreen(),
   ];
 
